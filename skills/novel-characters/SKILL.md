@@ -4,7 +4,7 @@ description: |
   从小说或短故事里拆出角色表、人物画像、形象提示词、音色提示词，
   其中形象提示词含一张角色设定图的完整版面指令（左半身像 + 右全身三视图 + 细节条），
   产出 JSON + Markdown + 可交互的 report.html。
-  报告语言可指定（--lang），默认中文，任意语言都支持；零依赖、零 API key、不出图。
+  报告语言可指定（--lang），默认越南文，任意语言都支持；零依赖、零 API key、不出图。
   Use when asked to 拆小说角色、分析人物、生成角色卡、character sheets from a novel。
 allowed-tools:
   - Read
@@ -221,7 +221,7 @@ report.html 的样式约定见 `{baseDir}/references/report-style.md`——要�
 ## 边界
 
 - 单次上限 24 块（净覆盖约 93 万字符），超了会明确报 `truncated`，不静默截断
-- 人类可读字段跟随 `--lang`（默认中文）；出图和 TTS 提示词**永远英文**，那些引擎吃英文最稳
+- 人类可读字段跟随 `--lang`（默认越南文）；出图和 TTS 提示词**永远英文**，那些引擎吃英文最稳
 - **本 skill 不出图。**`image.sheet` 是给下游的版面指令，版面最容易崩的几处（一张图两个长相、
   为了塞细节把人物压扁、左栏收口）靠提示词里写死的几句压住，见 `references/sheet.md`
 - 想要能实时编辑、边跑边看的交互界面，那是另一个东西，不在这个 skill 里

@@ -35,13 +35,13 @@ export function paramsOf(doc) {
   return { ...DEFAULT_PARAMS, ...(doc?.params ?? {}) };
 }
 
-/** 景别枚举：中文词必须出现在该分镜的分镜图提示词里（分镜图提示词是中文）。 */
+/** 景别枚举：景别词（中文 zh / 英文 phrase / 越南文 vi，任一）必须出现在该分镜的分镜图提示词里。 */
 export const SHOT_SIZES = {
-  'extreme-wide': { zh: '大远景', phrase: 'extreme wide shot' },
-  wide: { zh: '全景', phrase: 'wide shot' },
-  medium: { zh: '中景', phrase: 'medium shot' },
-  close: { zh: '特写', phrase: 'close-up' },
-  'extreme-close': { zh: '大特写', phrase: 'extreme close-up' },
+  'extreme-wide': { zh: '大远景', phrase: 'extreme wide shot', vi: 'đại viễn cảnh' },
+  wide: { zh: '全景', phrase: 'wide shot', vi: 'toàn cảnh' },
+  medium: { zh: '中景', phrase: 'medium shot', vi: 'trung cảnh' },
+  close: { zh: '特写', phrase: 'close-up', vi: 'cận cảnh' },
+  'extreme-close': { zh: '大特写', phrase: 'extreme close-up', vi: 'đặc tả' },
 };
 
 /** 运镜枚举：直接用 H3 官方词表，原样写进该分镜的 [Shot k] 段落。 */
@@ -92,7 +92,7 @@ export const H3_I2VA_LINE =
   'For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.';
 export const H3_FIELDS = ['integrated_multimodal_description:', 'overall_soundscape:', 'non_diegetic_music:'];
 
-/** 骨架 token 按语言取：默认英文（官方规范口径）；'zh' 整条中文（只保留 <d>[Chinese] 和 (S1) 两个模型级 token）。 */
+/** 骨架 token 按语言取：默认英文（官方规范口径）；'zh' 整条中文（只保留 <d>[Chinese] 和 (S1) 两个模型级 token）；'vi' 正文越南文、模型级 token 沿用英文格式。 */
 export const H3_TOKENS = {
   zh: {
     i2va: '目标视频在 0.00 秒处完全参照图 1（来自镜头 1）。',
@@ -111,6 +111,16 @@ export const H3_TOKENS = {
     fields: H3_FIELDS,
     shot: (k) => `[Shot ${k}]`,
     cutMark: (k, time) => `[Shot ${k}] At ${time},`,
+  },
+  // 越南文骨架：正文用越南文，模型级 token（<Picture 1>、[Shot k]、英文字段名）沿用官方英文格式，与 en 同构。
+  vi: {
+    i2va: 'Với video đích, tại giây 0.00 của video đích, <Picture 1> (từ [Shot 1]) được tham chiếu đầy đủ.',
+    alignHead: 'Cách các hình tham chiếu khớp với video đích — ',
+    alignItem: (k, t) => `Hình ${k} (từ Shot ${k}) khớp với mốc ${t} giây của video đích`,
+    alignTail: '.',
+    fields: H3_FIELDS,
+    shot: (k) => `[Shot ${k}]`,
+    cutMark: (k, time) => `[Shot ${k}] Tại ${time},`,
   },
 };
 
@@ -142,7 +152,7 @@ export function h3AlignmentLine(cuts, lang = 'en') {
   if (!cuts || cuts.length <= 1) return tk.i2va;
   const starts = cutStarts(cuts);
   const parts = cuts.map((c, i) => tk.alignItem(i + 1, starts[i].toFixed(2)));
-  return `${tk.alignHead}${parts.join(lang === 'en' ? '; ' : '；')}${tk.alignTail}`;
+  return `${tk.alignHead}${parts.join(lang === 'en' || lang === 'vi' ? '; ' : '；')}${tk.alignTail}`;
 }
 
 /** 台词/画面文字之外的部分——H3 要求它全英文，人名也只许出现在 <d> 里。 */
@@ -539,7 +549,7 @@ export function gateReport(board, ctx = {}) {
   // 配方卡库是可选挂载：ctx.recipes 为空就整门跳过（不是「没有 cut 带 recipe」就跳过）
   const recipes = ctx.recipes ?? null;
   let recipeRefs = 0;
-  // 提示词语言：默认英文——官方规范的口径（台词仍在 <d> 里保留原文）；'zh' 可切整条中文
+  // 提示词语言：默认英文——官方规范的口径（台词仍在 <d> 里保留原文）；'zh' 可切整条中文；'vi' 正文越南文、骨架 token 英文格式
   const promptLang = board?.promptLang ?? 'en';
 
   // 视频提示词禁人名：outline 的名字 + cast 的名字与别名。这是 H3 与 Seedance 官方规范的要求，
@@ -594,6 +604,8 @@ export function gateReport(board, ctx = {}) {
       const rest = h3Remainder(h3);
       if (promptLang === 'en') {
         if (CJK.test(rest)) bad.h3e.push(`${sid} 的 h3Prompt 设定英文却在 <d> 台词之外混入了中文`);
+      } else if (promptLang === 'vi') {
+        if (CJK.test(rest)) bad.h3e.push(`${sid} 的 h3Prompt 设定越南文却在 <d> 台词之外混入了中日韩字符`);
       } else if (!CJK.test(rest)) {
         bad.h3e.push(`${sid} 设定中文提示词（promptLang=${promptLang}），正文却写成了英文`);
       }
@@ -625,17 +637,21 @@ export function gateReport(board, ctx = {}) {
         }
         if (!SHOT_SIZES[cut?.size]) {
           bad.size.push(`${cid} 景别「${cut?.size}」不在枚举里`);
-        } else if (!String(cut?.frame ?? '').includes(SHOT_SIZES[cut.size].zh)) {
-          bad.size.push(`${cid} 分镜图提示词缺景别词「${SHOT_SIZES[cut.size].zh}」`);
+        } else {
+          const s = SHOT_SIZES[cut.size];
+          const frameText = String(cut?.frame ?? '');
+          if (!frameText.includes(s.zh) && !frameText.toLowerCase().includes(s.phrase) && !frameText.includes(s.vi)) {
+            bad.size.push(`${cid} 分镜图提示词缺景别词「${s.zh} / ${s.phrase} / ${s.vi}」`);
+          }
         }
         if (!CAMERA_MOVES[cut?.camera]) {
           bad.camera.push(`${cid} 运镜「${cut?.camera}」不在 H3 词表里`);
         } else {
           const slice = slices[ci];
-          const term = promptLang === 'en' ? String(cut.camera).toLowerCase() : CAMERA_MOVES[cut.camera];
+          const term = (promptLang === 'en' || promptLang === 'vi') ? String(cut.camera).toLowerCase() : CAMERA_MOVES[cut.camera];
           if (slice == null) {
             bad.camera.push(`${cid} 在 h3Prompt 里找不到对应的 [Shot ${ci + 1}] 段落`);
-          } else if (!(promptLang === 'en' ? slice.toLowerCase() : slice).includes(term)) {
+          } else if (!((promptLang === 'en' || promptLang === 'vi') ? slice.toLowerCase() : slice).includes(term)) {
             bad.camera.push(`${cid} 的 [Shot ${ci + 1}] 段落缺运镜词「${term}」`);
           }
         }
@@ -777,11 +793,11 @@ export function gateReport(board, ctx = {}) {
   add('ep-duration', `每集总时长在剧本目标 ±${Math.round(params.tolerance * 100)}% 内`, bad.duration.length === 0, script ? bad.duration.join('；') : SKIP_SCRIPT);
   add('crowd', `单个分镜同框 ≤ ${params.maxOnScreen} 人，超了必须带拆解说明`, bad.crowd.length === 0, bad.crowd.join('；'));
   add('segment-id', '段号 E01-01 格式、按顺序连号', bad.id.length === 0, bad.id.join('；'));
-  add('size-phrase', '景别中文词写进分镜图提示词', bad.size.length === 0, bad.size.join('；'));
+  add('size-phrase', '景别词（中文／英文／越南文任一）写进分镜图提示词', bad.size.length === 0, bad.size.join('；'));
   add('camera-phrase', '运镜用 H3 官方词表，且出现在自己的 [Shot k] 段落里', bad.camera.length === 0, bad.camera.join('；'));
   add('h3-structure', 'H3 首行对齐指令由分镜结构推导逐字对账，切点时刻逐个对', eps.length > 0 && bad.h3s.length === 0, bad.h3s.join('；'));
   add('h3-dialogue', '认领节拍的台词逐字进 H3 提示词的 <d> 块', bad.h3d.length === 0, script ? bad.h3d.join('；') : SKIP_SCRIPT);
-  add('h3-lang', `H3 提示词语言与设定一致（promptLang=${promptLang}，正文${promptLang === 'en' ? '全英文' : '中文'}、骨架 token 官方英文格式）`, bad.h3e.length === 0, bad.h3e.join('；'));
+  add('h3-lang', `H3 提示词语言与设定一致（promptLang=${promptLang}，正文${promptLang === 'en' ? '全英文' : promptLang === 'vi' ? '越南文' : '中文'}、骨架 token 官方英文格式）`, bad.h3e.length === 0, bad.h3e.join('；'));
   add('frame-prompt', '分镜图提示词中文且非空', bad.frame.length === 0, bad.frame.join('；'));
   add('prompt-no-names', '视频提示词不含角色名（H3 正文与 Seedance 镜头正文；分镜图提示词直呼其名放行）', bad.names.length === 0, banned.length ? bad.names.join('；') : SKIP_NAMES);
   add('composition', '构图量化字段齐全（每段 blocking；每镜焦距／机位／构图／视线落点／焦点／稳定性）', eps.length > 0 && bad.comp.length === 0, bad.comp.join('；'));
@@ -997,7 +1013,7 @@ const GATE_LABELS_EN = {
   'ep-duration': 'Episode total within ±{0}% of the script\'s target',
   'crowd': 'At most {0} characters on screen per cut; more requires a breakdown note',
   'segment-id': 'Segment IDs in E01-01 format, sequential',
-  'size-phrase': 'Chinese shot-size word present in the frame prompt',
+  'size-phrase': 'Shot-size word (Chinese / English / Vietnamese) present in the frame prompt',
   'camera-phrase': 'Camera move from the official H3 vocabulary, inside its own [Shot k] passage',
   'h3-structure': 'H3 alignment line derived from the cut structure, audited verbatim; cut times match',
   'h3-dialogue': 'Claimed dialogue appears verbatim inside the H3 <d> blocks',

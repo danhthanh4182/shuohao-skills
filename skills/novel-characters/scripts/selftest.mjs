@@ -26,6 +26,7 @@ import {
   strings,
   uiTemplate,
   validateCast,
+  DEFAULT_LANG,
 } from './novel-characters.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -302,11 +303,27 @@ eq(slug(''), 'character', '空名有兜底');
 
 /* ---------------- validateCast ---------------- */
 
-eq(validateCast(CAST, SOURCE).length, 0, '自带样例通过全部校验');
+eq(DEFAULT_LANG, 'vi', '默认语言是越南文（本 fork 的项目工作语言）');
+eq(validateCast(CAST, SOURCE, 'zh').length, 0, '自带样例通过全部校验（样例是中文数据，按 zh 校验）');
 ok(validateCast([], SOURCE).length > 0, '空 cast 报错');
 
 const clone = () => JSON.parse(JSON.stringify(CAST));
 const hits = (cast, keyword) => validateCast(cast, SOURCE).filter((p) => p.includes(keyword)).length;
+
+// 越南文角色卡：人类可读的音色字段写越南文，默认语言下必须全过
+{
+  const viCast = clone();
+  for (const c of viCast) {
+    c.voice.timbre = 'ấm, hơi khàn, trầm';
+    c.voice.pitch = 'thấp vừa';
+    c.voice.pace = 'chậm rãi, rõ ràng từng chữ';
+    c.voice.accent = 'giọng miền Nam nhẹ';
+    c.voice.emotion = 'mệt mỏi nhưng dịu dàng';
+    c.voice.referenceHint = 'như người dẫn chương trình radio ca đêm';
+  }
+  eq(validateCast(viCast, SOURCE).length, 0, '越南文音色字段在默认语言（vi）下通过');
+  eq(validateCast(viCast, SOURCE, 'vi').length, 0, '越南文音色字段在 lang=vi 下通过');
+}
 
 // 这四类是模型真实犯过的错，每一类都必须抓住
 let bad = clone();
@@ -327,7 +344,18 @@ ok(hits(bad, '人名') > 0, '抓住设定图提示词里的人名');
 
 bad = clone();
 bad[0].voice.timbre = 'warm husky alto';
-ok(hits(bad, '应为中文') > 0, '抓住该中文却写成英文的字段');
+ok(validateCast(bad, SOURCE, 'zh').some((p) => p.includes('应为中文')), 'lang=zh 时英文音色字段仍被拦（zh 分支保留）');
+ok(
+  !validateCast(bad, SOURCE, 'vi').some((p) => p.startsWith(`[${bad[0].name}]`) && p.includes('voice.timbre')),
+  'lang=vi 时英文音色字段合法（同为拉丁字母）',
+);
+
+bad = clone();
+bad[0].voice.timbre = '温暖低沉的女中音';
+ok(
+  validateCast(bad, SOURCE, 'vi').some((p) => p.startsWith(`[${bad[0].name}]`) && p.includes('应为越南文')),
+  'lang=vi 时中文音色字段被拦',
+);
 
 bad = clone();
 bad[0].image.sheet = '中文设定图描述';
@@ -346,11 +374,11 @@ delete bad[0].persona;
 ok(hits(bad, 'persona') > 0, '抓住缺失的 persona');
 
 // 没有原文时应该跳过逐字校验而不是全判失败
-eq(validateCast(CAST, null).length, 0, '不给原文时跳过引文校验');
+eq(validateCast(CAST, null, 'zh').length, 0, '不给原文时跳过引文校验');
 
 /* ---------------- render ---------------- */
 
-const md = renderMarkdown(CAST, '渡口');
+const md = renderMarkdown(CAST, '渡口', '', 'zh');
 ok(md.includes('# 渡口 — 角色表'), 'Markdown 有标题');
 for (const c of CAST) ok(md.includes(`## ${c.name}`), `Markdown 包含 ${c.name}`);
 ok(md.includes('角色设定图提示词'), 'Markdown 含设定图提示词');
@@ -394,16 +422,16 @@ eq((html.match(/class="rost on"/g) || []).length, 1, '左栏默认选中第一�
   }
   const ok1 = clone();
   ok1[0].voice.prompt += ' Consonants land softly, vowels stay open.';
-  eq(validateCast(ok1, SOURCE).length, 0, '正常的音色描述不误拦');
+  eq(validateCast(ok1, SOURCE, 'zh').length, 0, '正常的音色描述不误拦');
   const ok2 = clone();
   ok2[0].voice.prompt += ' A dry "k" sound.';
-  eq(validateCast(ok2, SOURCE).length, 0, '引号里只有一两个字符不算台词');
+  eq(validateCast(ok2, SOURCE, 'zh').length, 0, '引号里只有一两个字符不算台词');
 }
 
 // 音色只保留喂引擎的那一条：给人读的六项已经是结构化中文字段，
 // 再给一段中文散文，用户会复制错——这是这次修复的根因
 {
-  const html = renderHtml(CAST, { source: '渡口' });
+  const html = renderHtml(CAST, { source: '渡口' }, '', 'zh');
   ok(!html.includes('音色提示词（中文'), '报告里不再有中文音色提示词');
   ok(html.includes('音色提示词 · 喂 TTS 引擎用这条'), '音色提示词的标签写明用途');
   ok(html.includes('出图提示词 · 喂出图模型用这条'), '出图提示词的标签写明用途');
@@ -467,7 +495,7 @@ const DOC = JSON.parse(readFileSync(join(examples, '渡口-cast.json'), 'utf8'))
 ok(DOC.summary && DOC.summary.trim(), '样例带故事摘要');
 ok(renderHtml(CAST, '渡口', DOC.summary).includes('class="synopsis'), 'HTML 顶部渲染摘要');
 ok(!renderHtml(CAST, '渡口', '').includes('class="synopsis'), '没有摘要时不留空壳');
-ok(renderMarkdown(CAST, '渡口', DOC.summary).includes('## 故事摘要'), 'Markdown 也带摘要');
+ok(renderMarkdown(CAST, '渡口', DOC.summary, 'zh').includes('## 故事摘要'), 'Markdown 也带摘要');
 ok(renderHtml(CAST, '渡口', '<b>x</b>').includes('&lt;b&gt;'), '摘要里的 HTML 被转义');
 // 摘要默认三行 + 渐隐，点一下展开
 const synHtml = renderHtml(CAST, '渡口', DOC.summary);
@@ -663,7 +691,7 @@ ok(
 // 机器字段不受 lang 影响，永远必须英文
 const cjkMachine = clone();
 cjkMachine[0].image.prompt = '中文出图提示词';
-for (const l of ['zh', 'en', 'fr']) {
+for (const l of ['zh', 'en', 'fr', 'vi']) {
   ok(
     validateCast(cjkMachine, SOURCE, l).filter((p) => p.includes('必须英文')).length > 0,
     `lang=${l} 时 image.prompt 仍必须英文`,

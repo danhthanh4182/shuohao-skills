@@ -192,12 +192,12 @@ export function slug(name) {
 /* i18n                                                                */
 /* ------------------------------------------------------------------ */
 /*
- * 报告语言。默认 zh。
- * 内置 zh / en 两套界面文案；给了其他语言码就用 en 的界面骨架，
+ * 报告语言。默认 vi（本 fork 的项目工作语言）。
+ * 内置 zh / en / ja 界面文案；给了其他语言码就用 en 的界面骨架，
  * 但角色内容仍按那个语言生成——界面词没翻译总比整篇乱掉强。
  */
 
-export const DEFAULT_LANG = 'zh';
+export const DEFAULT_LANG = 'vi';
 
 const STRINGS = {
   zh: {
@@ -626,7 +626,7 @@ export function validateCast(characters, sourceText, lang = DEFAULT_LANG) {
 
     // --- 语言分工 ---
     // 机器字段永远英文；人类字段跟随报告语言。
-    // 只有 zh / en 能可靠自动判别，其他语言不猜、跳过。
+    // 只有 zh / en / vi / ja 能可靠自动判别（vi 与 en 同为拉丁字母，看「不含中日韩」），其他语言不猜、跳过。
     for (const [group, fields] of Object.entries(MACHINE_FIELDS)) {
       const obj = c?.[group];
       if (!obj) continue;
@@ -641,12 +641,13 @@ export function validateCast(characters, sourceText, lang = DEFAULT_LANG) {
         if (typeof t === 'string' && CJK.test(t)) at(name, `image.tags 必须英文，但「${t}」含中日韩字符`);
       }
     }
-    // 只有这三种能可靠自动判别，其他语言不猜、跳过——误报比漏报更烦人。
+    // 能可靠自动判别的才查（中日韩看 CJK/假名，拉丁字母的 en / vi 看不含中日韩），其他语言不猜、跳过——误报比漏报更烦人。
     if (voice) {
       for (const f of HUMAN_VOICE_FIELDS) {
         const v = voice[f];
         if (typeof v !== 'string' || !v.trim()) continue;
         if (lang === 'en' && CJK.test(v)) at(name, `voice.${f} 应为英文，但含中日韩字符`);
+        if (lang === 'vi' && CJK.test(v)) at(name, `voice.${f} 应为越南文，但含中日韩字符`);
         if (lang === 'zh' && !CJK.test(v)) at(name, `voice.${f} 应为中文，实际是「${v}」`);
         if (lang === 'zh' && KANA.test(v)) at(name, `voice.${f} 应为中文，但含日文假名`);
         if (lang === 'ja' && !KANA.test(v) && !CJK.test(v)) {

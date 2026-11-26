@@ -12,6 +12,7 @@ import {
   DEFAULT_PARAMS,
   exportPack,
   H3_I2VA_LINE,
+  H3_TOKENS,
   SHOT_SIZES,
   computeStats,
   cutStarts,
@@ -228,6 +229,18 @@ eq(gateReport(FIXTURE, CTX).length, 18, '十八道门');
   doc.episodes[0].segments[0].cuts[0].size = '大远景';
   ok(!gate(doc, 'size-phrase').ok, '景别不在枚举里被拦');
 }
+{
+  const doc = clone(FIXTURE);
+  const cut = doc.episodes[0].segments[0].cuts[0];
+  cut.frame = `浓雾清晨的河岸土路，${SHOT_SIZES[cut.size].phrase}，沈知微抱着旧皮箱`;
+  ok(gate(doc, 'size-phrase').ok, '分镜图提示词写英文景别短语也放行');
+}
+{
+  const doc = clone(FIXTURE);
+  const cut = doc.episodes[0].segments[0].cuts[0];
+  cut.frame = `浓雾清晨的河岸土路，${SHOT_SIZES[cut.size].vi}，沈知微抱着旧皮箱`;
+  ok(gate(doc, 'size-phrase').ok, '分镜图提示词写越南文景别词也放行');
+}
 // camera-phrase
 {
   const doc = clone(FIXTURE);
@@ -282,6 +295,21 @@ eq(gateReport(FIXTURE, CTX).length, 18, '十八道门');
   doc.promptLang = 'zh';
   ok(!gate(doc, 'h3-lang').ok, '设定中文、正文却是英文被拦——语言开关双向都管');
 }
+// h3-lang — promptLang=vi（本 fork 新增）：拉丁字母正文放行、混中日韩被拦、骨架 token 有 vi 版
+{
+  const doc = clone(FIXTURE);
+  doc.promptLang = 'vi';
+  ok(gate(doc, 'h3-lang').ok, 'promptLang=vi 时拉丁字母正文合法');
+}
+{
+  const doc = clone(FIXTURE);
+  doc.promptLang = 'vi';
+  doc.episodes[0].segments[0].h3Prompt += ' 浓雾弥漫。';
+  ok(!gate(doc, 'h3-lang').ok, 'promptLang=vi 时 <d> 台词之外混中文被拦');
+}
+ok(H3_TOKENS.vi, '骨架 token 有 vi 版');
+ok(h3AlignmentLine([{ seconds: 3 }], 'vi').startsWith('Với video đích'), 'vi 单分镜段用 vi 版 I2VA 句式');
+ok(h3AlignmentLine([{ seconds: 3 }, { seconds: 2 }], 'vi').includes('Hình 2 (từ Shot 2)'), 'vi 多分镜对齐指令用 vi 骨架拼');
 {
   const doc = clone(FIXTURE);
   doc.episodes[0].segments[0].h3Prompt = doc.episodes[0].segments[0].h3Prompt.replace('the old ferryman squatting', '老周 squatting');
@@ -738,7 +766,7 @@ eq(seedFromScript({}).episodes.length, 0, '空剧本不崩');
 
 eq(slug('渡口'), '渡口', '中文原样');
 eq(slug('  '), 'storyboard', '空名兜底');
-ok(Object.values(SHOT_SIZES).every((s) => s.zh && s.phrase), '景别枚举带中文名与英文短语');
+ok(Object.values(SHOT_SIZES).every((s) => s.zh && s.phrase && s.vi), '景别枚举带中文名、英文短语与越南文词');
 ok(Object.keys(CAMERA_MOVES).length >= 18, '运镜词表覆盖 H3 全部动作类型');
 ok(CAMERA_MOVES['Static Shot'] === '固定' && CAMERA_MOVES['Push In'] === '推', '运镜词表中英对照');
 
